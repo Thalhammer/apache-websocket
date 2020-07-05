@@ -4,5 +4,6 @@ psutil>=3.2.2,~=3.2
 pytest>=2.8.1,~=2.8
 pytest-twisted~=1.5
 tap.py~=1.7
+Twisted==16.5
 txaio~=2.1.0
 yamlish~=0.18.0
