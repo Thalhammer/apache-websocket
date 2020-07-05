@@ -13,6 +13,12 @@ This test script makes use of
 
 ## Setup
 
+_Warning: the test suite currently relies on an out-of-date version of Twisted,
+since versions 16.6+ dropped support for a feature that the suite relies on
+heavily. This version of Twisted has known CVEs. Until the test suite is fixed,
+virtualenv is the preferred installation method, to avoid polluting your system
+Python stack._
+
 The required Python packages are listed in requirements.txt. On Linux, you can
 install them by executing the following from this directory:
 
