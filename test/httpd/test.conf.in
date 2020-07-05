@@ -58,7 +58,7 @@ DocumentRoot htdocs
   WebSocketOriginCheck Off
 </Location>
 
-<Location /origin-whitelist>
+<Location /origin-trusted>
   SetHandler websocket-handler
   WebSocketHandler modules/mod_websocket_echo.so echo_init
 

@@ -17,7 +17,7 @@ def trusted_origin_response(agent, request):
     A fixture that performs a handshake using one of the explicitly trusted test
     Origins.
     """
-    response = pytest.blockon(make_request(agent, path='/origin-whitelist',
+    response = pytest.blockon(make_request(agent, path='/origin-trusted',
                                                   origin=request.param))
     yield response
     client.readBody(response).cancel() # immediately close the connection
@@ -45,8 +45,8 @@ def test_explicitly_trusted_Origins_are_allowed(trusted_origin_response):
 @pytest.inlineCallbacks
 def test_untrusted_Origins_are_not_allowed_with_OriginCheck_Trusted(agent):
     # When using WebSocketOriginCheck Trusted, even a same-origin request isn't
-    # good enough if the origin is not on the whitelist.
-    response = yield make_request(agent, path='/origin-whitelist',
+    # good enough if the origin is not on the allowlist.
+    response = yield make_request(agent, path='/origin-trusted',
                                   origin=make_root())
     assert response.code == 403
     client.readBody(response).cancel() # immediately close the connection
