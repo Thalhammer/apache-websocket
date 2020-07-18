@@ -1,3 +1,4 @@
+psutil~=5.7
 pytest~=5.4
 pytest-asyncio~=0.14.0
 pytest-tap~=3.1
