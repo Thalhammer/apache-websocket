@@ -17,8 +17,6 @@
 # limitations under the License.
 #
 
-from __future__ import print_function
-
 import subprocess
 import sys
 import tap.line
@@ -68,7 +66,7 @@ for cmd in spec['commands']:
 
     for line in p.stdout:
         # Parse each line of TAP.
-        line = line.rstrip("\r\n")
+        line = line.decode('utf-8').rstrip("\r\n")
         tap_line = parser.parse_line(line)
         category = tap_line.category
 
