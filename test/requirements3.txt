@@ -1,0 +1,5 @@
+pytest~=5.4
+pytest-asyncio~=0.14.0
+pytest-tap~=3.1
+websockets~=8.1
+yamlish~=0.18.1
