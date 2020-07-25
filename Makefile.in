@@ -1,6 +1,6 @@
 .PHONY: install clean check start restart stop examples install-examples \
 		test-folders test-modules start-test-server restart-test-server \
-		stop-test-server debug
+		stop-test-server debug enable-coverage
 
 # Absolute path to the current directory.
 CURDIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
@@ -17,8 +17,8 @@ LDFLAGS +=
 
 # Flags for all compilation.
 comma := ,
-APXS_CFLAGS := $(addprefix -Wc$(comma),$(CFLAGS))
-APXS_LDFLAGS := $(addprefix -Wl$(comma),$(LDFLAGS))
+APXS_CFLAGS = $(addprefix -Wc$(comma),$(CFLAGS))
+APXS_LDFLAGS = $(addprefix -Wl$(comma),$(LDFLAGS))
 
 # List of example plugins -- one for each *.c in the examples/ directory.
 EXAMPLES := $(wildcard examples/*.c)
@@ -62,6 +62,12 @@ mod_websocket.la: validate_utf8.h
 
 %.la: %.c websocket_plugin.h
 	$(APXS) -c -I. $(APXS_CFLAGS) $(APXS_LDFLAGS) $<
+
+# The enable-coverage recipe will enable gcov instrumentation. Data files are
+# dropped into the .libs/ build directories.
+enable-coverage: override CFLAGS += -Og -fprofile-arcs -ftest-coverage
+enable-coverage: override LDFLAGS += -fprofile-arcs
+enable-coverage: all
 
 #
 # Test Rules
