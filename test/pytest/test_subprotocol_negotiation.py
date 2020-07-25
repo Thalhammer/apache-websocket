@@ -1,46 +1,40 @@
+import asyncio
+
 import pytest
+import websockets
 
-from twisted.web import client
+from test_fixtures import root_uri
 
-from testutil.fixtures import agent
-from testutil.websocket import assert_successful_upgrade, make_request
+pytestmark = pytest.mark.asyncio
 
-#
-# Fixtures
-#
+async def test_no_subprotocol_is_negotiated_by_default(root_uri):
+    uri = root_uri + "/echo"
+    subprotocols = ["my_protocol"]
 
-@pytest.yield_fixture(params=["dumb-increment-protocol",
-                              "   dumb-increment-protocol  ,",
-                              "\tdumb-increment-protocol\t",
-                              "echo, dumb-increment-protocol",
-                              "dumb-increment-protocol, echo",
-                              ", , dumb-increment-protocol, "])
-def increment_response(agent, request):
-    """
-    A fixture that connects to the dumb-increment plugin with the given
-    subprotocol list.
-    """
-    response = pytest.blockon(make_request(agent, path='/dumb-increment',
-                                           protocol=request.param))
-    yield response
-    client.readBody(response).cancel() # immediately close the connection
+    async with websockets.connect(uri, subprotocols=subprotocols) as conn:
+        assert conn.subprotocol == None
 
-#
-# Tests
-#
+@pytest.mark.parametrize("protocol_header", [
+    # All of the following Sec-WebSocket-Protocol header values are valid.
+    "dumb-increment-protocol",
+    "   dumb-increment-protocol  ,",
+    "\tdumb-increment-protocol\t",
+    "echo, dumb-increment-protocol",
+    "dumb-increment-protocol, echo",
+    ", , dumb-increment-protocol, ",
+])
+async def test_negotiation_of_known_subprotocol_succeeds(root_uri, protocol_header):
+    uri = root_uri + "/dumb-increment"
 
-@pytest.inlineCallbacks
-def test_no_subprotocol_is_negotiated_by_default(agent):
-    response = yield make_request(agent, protocol="my_protocol")
-    assert_successful_upgrade(response)
+    # XXX We must set the subprotocols list in addition to the
+    # Sec-WebSocket-Protocol header so that the websockets library doesn't treat
+    # the returned subprotocol as unexpected. We're abusing the API here; hence
+    # the added complication.
+    expected = "dumb-increment-protocol"
+    subprotocols = [expected]
+    headers = { 'Sec-WebSocket-Protocol': protocol_header }
 
-    protocol = response.headers.getRawHeaders("Sec-WebSocket-Protocol")
-    assert protocol is None
-
-def test_negotiation_of_known_subprotocol_succeeds(increment_response):
-    assert_successful_upgrade(increment_response)
-
-    headers = increment_response.headers
-    protocol = headers.getRawHeaders("Sec-WebSocket-Protocol")
-    assert len(protocol) == 1
-    assert protocol[0] == 'dumb-increment-protocol'
+    async with websockets.connect(uri,
+                                  subprotocols=subprotocols,
+                                  extra_headers=headers) as conn:
+        assert conn.subprotocol == expected

@@ -1,142 +1,85 @@
-import autobahn.twisted.websocket as ws
+import asyncio
+
 import pytest
+import websockets
+import websockets.framing
 
-from twisted.internet import defer
-
-from testutil.fixtures import fixture_connect
-from testutil.protocols import SimpleProtocol
-from testutil.websocket import make_root, SCHEME
+from test_fixtures import root_uri
 
 CLOSE_CODE_PROTOCOL_ERROR = 1002
-
-ROOT = make_root("wss" if (SCHEME == "https") else "ws")
-
-#
-# Autobahn Subclasses
-#
-
-class CloseTestProtocol(SimpleProtocol):
-    """
-    A version of SimpleProtocol that allows invalid close codes to be sent.
-    """
-    # XXX Monkey-patch sendClose() to allow invalid codes on the wire.
-    def sendClose(self, code=None, reason=None):
-        self.sendCloseFrame(code=code, isReply=False)
-
-#
-# Helpers
-#
-
-def succeeded(code):
-    return code != CLOSE_CODE_PROTOCOL_ERROR
-
-def failed(code):
-    return not succeeded(code)
 
 #
 # Fixtures
 #
 
-def connect(uri):
-    """Helper wrapper for fixture_connect."""
-    return fixture_connect(uri, CloseTestProtocol)
+@pytest.fixture
+def permit_illegal_close(monkeypatch):
+    """
+    This fixture provides a function that monkeypatches the websockets library
+    to allow an illegal outgoing close code.
+    """
+    def f(code):
+        allowed = websockets.framing.EXTERNAL_CLOSE_CODES + [code]
+        monkeypatch.setattr(websockets.framing, "EXTERNAL_CLOSE_CODES", allowed)
+    return f
 
 @pytest.fixture
-def default_proto():
+async def default_conn(root_uri):
     """A fixture that returns a WebSocket protocol connection to an endpoint
     that has no WebSocketAllowReservedStatusCodes directive."""
-    return connect(ROOT + "/echo")
+    uri = root_uri + "/echo"
+    async with websockets.connect(uri) as conn:
+        yield conn
 
 @pytest.fixture
-def allow_proto():
+async def allow_conn(root_uri):
     """A fixture that returns a WebSocket protocol connection to an endpoint
     that has WebSocketAllowReservedStatusCodes enabled."""
-    return connect(ROOT + "/echo-allow-reserved")
+    uri = root_uri + "/echo-allow-reserved"
+    async with websockets.connect(uri) as conn:
+        yield conn
 
 #
 # Tests
 #
 
-@pytest.inlineCallbacks
-def test_1000_is_always_allowed(allow_proto):
-    allow_proto.sendClose(1000)
-    response = yield allow_proto.closed
-    assert succeeded(response)
+pytestmark = pytest.mark.asyncio
 
-@pytest.inlineCallbacks
-def test_1004_is_rejected_by_default(default_proto):
-    default_proto.sendClose(1004)
-    response = yield default_proto.closed
-    assert failed(response)
+async def test_1000_is_always_allowed(allow_conn):
+    await allow_conn.close(1000)
+    assert allow_conn.close_code != CLOSE_CODE_PROTOCOL_ERROR
 
-@pytest.inlineCallbacks
-def test_1004_is_allowed_when_allowing_reserved(allow_proto):
-    allow_proto.sendClose(1004)
-    response = yield allow_proto.closed
-    assert succeeded(response)
+NEVER_ALLOWED = [
+    1005,
+    1006,
+    1015,
+]
 
-@pytest.inlineCallbacks
-def test_1005_is_never_allowed(allow_proto):
-    allow_proto.sendClose(1005)
-    response = yield allow_proto.closed
-    assert failed(response)
+@pytest.mark.parametrize("code", NEVER_ALLOWED)
+async def test_some_close_codes_are_always_forbidden(allow_conn, permit_illegal_close, code):
+    permit_illegal_close(code)
 
-@pytest.inlineCallbacks
-def test_1006_is_never_allowed(allow_proto):
-    allow_proto.sendClose(1006)
-    response = yield allow_proto.closed
-    assert failed(response)
+    await allow_conn.close(code)
+    assert allow_conn.close_code == CLOSE_CODE_PROTOCOL_ERROR
 
-@pytest.inlineCallbacks
-def test_1014_is_rejected_by_default(default_proto):
-    default_proto.sendClose(1014)
-    response = yield default_proto.closed
-    assert failed(response)
+ALLOWED_WITH_CONFIG = [
+    1004, # "reserved"
+    1014, # bad gateway. TODO this should now be allowed by default
+    1016, # beginning of unassigned block as of July 2020
+    2000,
+    2999, # end of reserved-for-specification block
+]
 
-@pytest.inlineCallbacks
-def test_1014_is_allowed_when_allowing_reserved(allow_proto):
-    allow_proto.sendClose(1014)
-    response = yield allow_proto.closed
-    assert succeeded(response)
+@pytest.mark.parametrize("code", ALLOWED_WITH_CONFIG)
+async def test_reserved_close_codes_are_rejected_by_default(default_conn, permit_illegal_close, code):
+    permit_illegal_close(code)
 
-@pytest.inlineCallbacks
-def test_1015_is_never_allowed(allow_proto):
-    allow_proto.sendClose(1015)
-    response = yield allow_proto.closed
-    assert failed(response)
+    await default_conn.close(code)
+    assert default_conn.close_code == CLOSE_CODE_PROTOCOL_ERROR
 
-@pytest.inlineCallbacks
-def test_1016_is_rejected_by_default(default_proto):
-    default_proto.sendClose(1016)
-    response = yield default_proto.closed
-    assert failed(response)
+@pytest.mark.parametrize("code", ALLOWED_WITH_CONFIG)
+async def test_reserved_close_codes_are_allowed_via_configuration(allow_conn, permit_illegal_close, code):
+    permit_illegal_close(code)
 
-@pytest.inlineCallbacks
-def test_1016_is_allowed_when_allowing_reserved(allow_proto):
-    allow_proto.sendClose(1016)
-    response = yield allow_proto.closed
-    assert succeeded(response)
-
-@pytest.inlineCallbacks
-def test_2000_is_rejected_by_default(default_proto):
-    default_proto.sendClose(2000)
-    response = yield default_proto.closed
-    assert failed(response)
-
-@pytest.inlineCallbacks
-def test_2000_is_allowed_when_allowing_reserved(allow_proto):
-    allow_proto.sendClose(2000)
-    response = yield allow_proto.closed
-    assert succeeded(response)
-
-@pytest.inlineCallbacks
-def test_2999_is_rejected_by_default(default_proto):
-    default_proto.sendClose(2999)
-    response = yield default_proto.closed
-    assert failed(response)
-
-@pytest.inlineCallbacks
-def test_2999_is_allowed_when_allowing_reserved(allow_proto):
-    allow_proto.sendClose(2999)
-    response = yield allow_proto.closed
-    assert succeeded(response)
+    await allow_conn.close(code)
+    assert allow_conn.close_code != CLOSE_CODE_PROTOCOL_ERROR
