@@ -62,13 +62,16 @@ def assert_headers_match(actual_headers, expected_list):
     assert actual_list == expected_list
 
 def websocket_headers(*, key=UPGRADE_KEY, version=None, protocol=None,
-                      origin=None, host=None):
+                      origin=None, host=None, connection=None):
     if version is None:
         version = '13'
 
+    if connection is None:
+        connection = "Upgrade"
+
     hdrs = {
         "Upgrade": "websocket",
-        "Connection": "Upgrade",
+        "Connection": connection,
         "Sec-WebSocket-Key": key,
         "Sec-WebSocket-Version": version,
     }
@@ -122,8 +125,13 @@ def uri(root_uri):
 #
 
 @pytest.mark.parametrize("version", SUPPORTED_VERSIONS)
-async def test_valid_handshake_is_upgraded_correctly(http, uri, version):
-    headers = websocket_headers(version=version)
+@pytest.mark.parametrize("connection", [
+    "Upgrade",
+    "Upgrade, close",
+    "close, Upgrade,",
+])
+async def test_valid_handshake_is_upgraded_correctly(http, uri, version, connection):
+    headers = websocket_headers(version=version, connection=connection)
 
     async with http.get(uri, headers=headers) as resp:
         assert_successful_upgrade(resp)
