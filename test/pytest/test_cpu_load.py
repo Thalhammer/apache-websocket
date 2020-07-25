@@ -1,10 +1,10 @@
+import asyncio
+
 import psutil
 import pytest
+import websockets
 
-from twisted.web import client
-
-from testutil.fixtures import agent
-from testutil.websocket import make_request
+from test_fixtures import root_uri
 
 # The maximum CPU usage we consider acceptable.
 MAX_CPU_PERCENTAGE = 50
@@ -16,7 +16,7 @@ MAX_CPU_PERCENTAGE = 50
 def any_cpus_railed():
    """Returns True if any CPU cores have crossed the MAX_CPU_PERCENTAGE."""
    percentages = psutil.cpu_percent(interval=0.5, percpu=True)
-   
+
    for p in percentages:
        if p > MAX_CPU_PERCENTAGE:
            return True
@@ -27,18 +27,17 @@ def any_cpus_railed():
 # Tests
 #
 
-@pytest.inlineCallbacks
+pytestmark = pytest.mark.asyncio
+
 @pytest.mark.skipif(any_cpus_railed(),
                     reason="current CPU load is too high to reliably test for spikes")
-def test_cpu_load_does_not_spike_when_idle(agent):
+async def test_cpu_load_does_not_spike_when_idle(root_uri):
     """
     A regression test for issue #9 (railed CPU when a WebSocket connection is
     open but idle).
     """
-    response = yield make_request(agent)
+    uri = root_uri + "/echo"
 
-    try:
+    async with websockets.connect(uri):
         # Now that the connection is open, see if any CPUs are in trouble.
         assert not any_cpus_railed()
-    finally:
-        client.readBody(response).cancel() # close the connection

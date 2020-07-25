@@ -1,9 +1,7 @@
-autobahn[twisted,accelerate]~=0.10.7
-autobahntestsuite~=0.7.5
-psutil>=3.2.2,~=3.2
-pytest>=2.8.1,~=2.8
-pytest-twisted~=1.5
-tap.py~=1.7
-Twisted==16.5
-txaio~=2.1.0
-yamlish~=0.18.0
+aiohttp~=3.6
+psutil~=5.7
+pytest~=5.4
+pytest-asyncio~=0.14.0
+pytest-tap~=3.1
+websockets~=8.1
+yamlish~=0.18.1
