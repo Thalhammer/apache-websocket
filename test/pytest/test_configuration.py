@@ -3,7 +3,7 @@ import asyncio
 import pytest
 import websockets
 
-from test_fixtures import root_uri
+from test_fixtures import root_uri, make_root
 
 #
 # Tests
@@ -45,9 +45,10 @@ async def test_untrusted_Origins_are_not_allowed_with_OriginCheck_Trusted(root_u
     # When using WebSocketOriginCheck Trusted, even a same-origin request isn't
     # good enough if the origin is not on the allowlist.
     uri = root_uri + "/origin-trusted"
+    origin = make_root()
 
     with pytest.raises(websockets.exceptions.InvalidStatusCode) as excinfo:
-        async with websockets.connect(uri, extra_headers=[('Origin', root_uri)]):
+        async with websockets.connect(uri, extra_headers=[('Origin', origin)]):
             pass
 
     assert excinfo.value.status_code == 403

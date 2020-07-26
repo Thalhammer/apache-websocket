@@ -114,11 +114,11 @@ async def http():
         yield client
 
 @pytest.fixture
-def uri(root_uri):
+def uri():
     """
     Every test in this file uses the same uri.
     """
-    return root_uri + "/echo"
+    return make_root() + "/echo"
 
 #
 # Tests
