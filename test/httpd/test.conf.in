@@ -28,6 +28,10 @@ DocumentRoot htdocs
 @conf_22@LogLevel debug
 @conf_24@LogLevel websocket:debug
 
+# Uncomment for request-level debugging.
+#LoadModule log_forensic_module "@system_modules_dir@/mod_log_forensic.so"
+#ForensicLog logs/forensic_log
+
 #
 # Test Configuration
 #
