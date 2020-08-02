@@ -87,3 +87,12 @@ async def test_protocol_count_is_set_to_length_of_subprotocols_list(uri, subprot
 
         resp = await rpc(conn, "proto-count")
         assert resp == str(subprotocol_num)
+
+async def test_plugin_on_connect_may_refuse_connections(uri):
+    headers = { "X-Refuse-Connection": "1" }
+
+    with pytest.raises(websockets.exceptions.InvalidStatusCode) as excinfo:
+        async with websockets.connect(uri, extra_headers=headers) as conn:
+            pass
+
+    assert excinfo.value.status_code == 403

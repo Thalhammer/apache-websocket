@@ -40,6 +40,11 @@ static int send_uint(const WebSocketServer *, unsigned int);
 
 static void *CALLBACK on_connect(const WebSocketServer *server)
 {
+    /* Refuse the connection if requested. */
+    if (server->header_get(server, "X-Refuse-Connection")) {
+        return NULL;
+    }
+
     choose_subprotocol(server);
 
     /* Set a static response header. */
