@@ -46,3 +46,7 @@ async def test_plugin_get_header_returns_null_for_nonexistent_headers(uri):
         resp = await asyncio.wait_for(conn.recv(), timeout=1.0)
 
     assert resp == '<null>'
+
+async def test_plugin_set_header_sets_response_header(uri):
+    async with websockets.connect(uri) as conn:
+        assert conn.response_headers["X-Debug-Header"] == "true"

@@ -18,6 +18,7 @@
 
 EXPORT WebSocketPlugin *CALLBACK debug_init(void);
 
+static void *CALLBACK on_connect(const WebSocketServer *server);
 static size_t CALLBACK on_message(void *, const WebSocketServer *, int,
                                   unsigned char *, size_t);
 
@@ -25,12 +26,20 @@ static WebSocketPlugin plugin = {
     sizeof(WebSocketPlugin),
     WEBSOCKET_PLUGIN_VERSION_0,
     NULL, /* destroy */
-    NULL, /* on_connect */
+    on_connect,
     on_message,
     NULL, /* on_disconnect */
 };
 
 extern EXPORT WebSocketPlugin *CALLBACK debug_init(void) { return &plugin; }
+
+static void *CALLBACK on_connect(const WebSocketServer *server)
+{
+    /* Set a static response header. */
+    server->header_set(server, "X-Debug-Header", "true");
+
+    return (void *) 1;
+}
 
 static size_t CALLBACK on_message(void *private, const WebSocketServer *server,
                                   int type, unsigned char *buffer,
