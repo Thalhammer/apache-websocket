@@ -47,6 +47,33 @@ static size_t CALLBACK on_message(void *private, const WebSocketServer *server,
     if ((buffer_size == 5) && !strncmp(msg, "close", buffer_size)) {
         server->close(server);
     }
+    else if ((buffer_size >= 8) && !strncmp(msg, "header: ", 8)) {
+        const char *value;
+
+        {
+            /* The header value must be null-terminated before retrieval. */
+            size_t header_len = buffer_size - 8;
+            char *header = malloc(header_len + 1);
+
+            if (!header) {
+                return 0;
+            }
+
+            memcpy(header, msg + 8, header_len);
+            header[header_len] = '\0';
+
+            value = server->header_get(server, header);
+
+            free(header);
+        }
+
+        if (!value) {
+            value = "<null>";
+        }
+
+        server->send(server, MESSAGE_TYPE_TEXT, (unsigned char *) value,
+                     strlen(value));
+    }
 
     return buffer_size;
 }
