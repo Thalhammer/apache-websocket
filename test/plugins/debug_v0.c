@@ -15,6 +15,7 @@
 #include "websocket_plugin.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 EXPORT WebSocketPlugin *CALLBACK debug_init(void);
@@ -34,8 +35,13 @@ static WebSocketPlugin plugin = {
 
 extern EXPORT WebSocketPlugin *CALLBACK debug_init(void) { return &plugin; }
 
+static void choose_subprotocol(const WebSocketServer *);
+static int send_uint(const WebSocketServer *, unsigned int);
+
 static void *CALLBACK on_connect(const WebSocketServer *server)
 {
+    choose_subprotocol(server);
+
     /* Set a static response header. */
     server->header_set(server, "X-Debug-Header", "true");
 
@@ -85,17 +91,57 @@ static size_t CALLBACK on_message(void *private, const WebSocketServer *server,
                      strlen(value));
     }
     else if ((buffer_size == 7) && !strncmp(msg, "version", buffer_size)) {
-        char buf[20] = {0};
-        int written;
-
-        written = snprintf(buf, sizeof(buf), "%u", server->version);
-        if ((written < 0) || (written >= sizeof(buf))) {
+        if (!send_uint(server, server->version)) {
             return 0;
         }
+    }
+    else if ((buffer_size == 11) && !strncmp(msg, "proto-count", buffer_size)) {
+        unsigned int count = (unsigned int) server->protocol_count(server);
 
-        server->send(server, MESSAGE_TYPE_TEXT, (unsigned char *) buf,
-                     strlen(buf));
+        if (!send_uint(server, count)) {
+            return 0;
+        }
     }
 
     return buffer_size;
+}
+
+static void choose_subprotocol(const WebSocketServer *server)
+{
+    const char *index_str;
+    long int index;
+    char *end;
+    const char *subprotocol;
+
+    /* The test client may ask us to choose a subprotocol via request header. */
+    index_str = server->header_get(server, "X-Choose-Subprotocol");
+    if (!index_str || !index_str[0]) {
+        return;
+    }
+
+    index = strtol(index_str, &end, 10);
+    if (*end != '\0') {
+        return; /* invalid integer */
+    }
+
+    if (index >= server->protocol_count(server)) {
+        return; /* out of range */
+    }
+
+    subprotocol = server->protocol_index(server, index);
+    server->protocol_set(server, subprotocol);
+}
+
+static int send_uint(const WebSocketServer *server, unsigned int u)
+{
+    char buf[20] = {0};
+    int written;
+
+    written = snprintf(buf, sizeof(buf), "%u", u);
+    if ((written < 0) || (written >= sizeof(buf))) {
+        return 0;
+    }
+
+    server->send(server, MESSAGE_TYPE_TEXT, (unsigned char *) buf, strlen(buf));
+    return 1;
 }
