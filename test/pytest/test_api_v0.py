@@ -50,3 +50,10 @@ async def test_plugin_get_header_returns_null_for_nonexistent_headers(uri):
 async def test_plugin_set_header_sets_response_header(uri):
     async with websockets.connect(uri) as conn:
         assert conn.response_headers["X-Debug-Header"] == "true"
+
+async def test_server_version_is_passed_to_plugin(uri):
+    async with websockets.connect(uri) as conn:
+        await conn.send("version")
+        resp = await asyncio.wait_for(conn.recv(), timeout=1.0)
+
+    assert resp == "1"

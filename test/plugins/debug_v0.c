@@ -14,6 +14,7 @@
 
 #include "websocket_plugin.h"
 
+#include <stdio.h>
 #include <string.h>
 
 EXPORT WebSocketPlugin *CALLBACK debug_init(void);
@@ -82,6 +83,18 @@ static size_t CALLBACK on_message(void *private, const WebSocketServer *server,
 
         server->send(server, MESSAGE_TYPE_TEXT, (unsigned char *) value,
                      strlen(value));
+    }
+    else if ((buffer_size == 7) && !strncmp(msg, "version", buffer_size)) {
+        char buf[20] = {0};
+        int written;
+
+        written = snprintf(buf, sizeof(buf), "%u", server->version);
+        if ((written < 0) || (written >= sizeof(buf))) {
+            return 0;
+        }
+
+        server->send(server, MESSAGE_TYPE_TEXT, (unsigned char *) buf,
+                     strlen(buf));
     }
 
     return buffer_size;
