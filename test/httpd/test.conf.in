@@ -82,3 +82,8 @@ DocumentRoot htdocs
 
   WebSocketMaxMessageSize 4
 </Location>
+
+<Location /threads>
+  SetHandler websocket-handler
+  WebSocketHandler modules/threads.so threads_init
+</Location>

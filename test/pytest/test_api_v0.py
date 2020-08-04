@@ -96,3 +96,22 @@ async def test_plugin_on_connect_may_refuse_connections(uri):
             pass
 
     assert excinfo.value.status_code == 403
+
+async def test_plugin_send_is_correctly_mutexed(root_uri):
+    uri = root_uri + "/threads"
+    counts = {}
+
+    async with websockets.connect(uri) as conn:
+        async for msg in conn:
+            index, count = msg.split(': ', 1)
+
+            if index not in counts:
+                assert count == '1000'
+            else:
+                previous = int(counts[index])
+                assert count == str(previous - 1)
+
+            counts[index] = count
+
+    for index in counts:
+        assert counts[index] == '1'
