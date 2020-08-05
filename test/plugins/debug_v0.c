@@ -18,6 +18,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+/*
+ * The debug_v0 plugin provides ways for the test framework to validate the
+ * operation of the websocket_plugin API provided by the server.
+ *
+ * It has no other inherently redeeming value. In particular, don't put this
+ * plugin into production; it allows header reflection and other debugging
+ * goodies that could be useful to attackers.
+ */
+
 EXPORT WebSocketPlugin *CALLBACK debug_init(void);
 
 static void *CALLBACK on_connect(const WebSocketServer *server);
@@ -60,15 +69,26 @@ static size_t CALLBACK on_message(void *private, const WebSocketServer *server,
     char *msg;
 
     if (type != MESSAGE_TYPE_TEXT) {
+        /* Ignore any binary messages. */
         return buffer_size;
     }
 
     msg = (char *) buffer;
 
+    /*
+     * This plugin provides a simple RPC: make a named request, receive a
+     * response. Each case is tightly coupled to one of the API tests.
+     *
+     * Note that the incoming buffer isn't null-terminated. Hence the
+     * strange-looking combo of a buffer length check AND a strncmp for every
+     * case.
+     */
     if ((buffer_size == 5) && !strncmp(msg, "close", buffer_size)) {
+        /* "close": simply close the connection immediately. */
         server->close(server);
     }
     else if ((buffer_size >= 8) && !strncmp(msg, "header: ", 8)) {
+        /* "header: <name>": return the value of the <name> request header. */
         const char *value;
 
         {
@@ -96,11 +116,13 @@ static size_t CALLBACK on_message(void *private, const WebSocketServer *server,
                      strlen(value));
     }
     else if ((buffer_size == 7) && !strncmp(msg, "version", buffer_size)) {
+        /* "version": return the version of the plugin's WebSocketServer. */
         if (!send_uint(server, server->version)) {
             return 0;
         }
     }
     else if ((buffer_size == 11) && !strncmp(msg, "proto-count", buffer_size)) {
+        /* "proto-count": return the number of offered subprotocols. */
         unsigned int count = (unsigned int) server->protocol_count(server);
 
         if (!send_uint(server, count)) {
@@ -111,6 +133,10 @@ static size_t CALLBACK on_message(void *private, const WebSocketServer *server,
     return buffer_size;
 }
 
+/*
+ * Chooses a subprotocol from the offered list, using the index provided in the
+ * X-Choose-Subprotocol request header.
+ */
 static void choose_subprotocol(const WebSocketServer *server)
 {
     const char *index_str;
@@ -137,6 +163,9 @@ static void choose_subprotocol(const WebSocketServer *server)
     server->protocol_set(server, subprotocol);
 }
 
+/*
+ * Sends the decimal representation of an unsigned integer as a UTF-8 message.
+ */
 static int send_uint(const WebSocketServer *server, unsigned int u)
 {
     char buf[20] = {0};
