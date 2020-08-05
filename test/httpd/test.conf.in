@@ -40,6 +40,11 @@ DocumentRoot htdocs
   SetHandler websocket-handler
 </Location>
 
+<Location /debug/v0>
+  SetHandler websocket-handler
+  WebSocketHandler modules/debug_v0.so debug_init
+</Location>
+
 <Location /dumb-increment>
   SetHandler websocket-handler
   WebSocketHandler modules/mod_websocket_dumb_increment.so dumb_increment_init
@@ -76,4 +81,9 @@ DocumentRoot htdocs
   WebSocketHandler modules/mod_websocket_echo.so echo_init
 
   WebSocketMaxMessageSize 4
+</Location>
+
+<Location /threads>
+  SetHandler websocket-handler
+  WebSocketHandler modules/threads.so threads_init
 </Location>
