@@ -1,32 +1,45 @@
-import pytest
+import asyncio
 import re
 
-from twisted.internet import reactor
-from twisted.web import client
+import aiohttp
+import pytest
+import websockets
 
-from testutil.fixtures import agent, agent_10
-from testutil.websocket import assert_successful_upgrade, make_authority, \
-                               make_root, make_request, HOST, HOST_IPV6, SCHEME
+from test_fixtures import root_uri, make_authority, make_root
+from test_fixtures import HOST, HOST_IPV6, SCHEME
 
-# XXX for the xxx_headerReceived monkey-patch
-from twisted.web._newclient import HTTPParser
+pytestmark = pytest.mark.asyncio
 
 #
 # Helpers
 #
 
-# XXX Twisted's HTTPParser doesn't give us access to connection control headers,
-# but we need them. This is a monkey-patch that adds connection control headers
-# back to the main headers list.
-def xxx_headerReceived(self, name, value):
-    self._oldHeaderReceived(name, value)
+# from `openssl rand -base64 16`. guaranteed to be random.
+UPGRADE_KEY = '36zg57EA+cDLixMBxrDj4g=='
 
-    name = name.lower()
-    if self.isConnectionControlHeader(name):
-        self.headers.addRawHeader(name, value)
+# base64(SHA1(UPGRADE_KEY:"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
+UPGRADE_ACCEPT = 'eGic2At3BJQkGyA4Dq+3nczxEJo='
 
-HTTPParser._oldHeaderReceived = HTTPParser.headerReceived
-HTTPParser.headerReceived = xxx_headerReceived
+def assert_successful_upgrade(response):
+    """
+    Asserts that a server's response to a WebSocket Upgrade request is correct
+    and successful.
+    """
+    # The server must upgrade with a 101 response.
+    assert response.status == 101
+
+    # We need to see Connection: Upgrade and Upgrade: websocket.
+    connection = response.headers.getall("Connection")
+    assert "upgrade" in [h.lower() for h in connection]
+
+    upgrade = response.headers.getall("Upgrade")
+    assert len(upgrade) == 1
+    assert upgrade[0].lower() == "websocket"
+
+    # The Sec-WebSocket-Accept header should match our precomputed digest.
+    accept = response.headers.getall("Sec-WebSocket-Accept")
+    assert len(accept) == 1
+    assert accept[0] == UPGRADE_ACCEPT
 
 def assert_headers_match(actual_headers, expected_list):
     """
@@ -48,145 +61,185 @@ def assert_headers_match(actual_headers, expected_list):
 
     assert actual_list == expected_list
 
+def websocket_headers(*, key=UPGRADE_KEY, version=None, protocol=None,
+                      origin=None, host=None, connection=None):
+    if version is None:
+        version = '13'
+
+    if connection is None:
+        connection = "Upgrade"
+
+    hdrs = {
+        "Upgrade": "websocket",
+        "Connection": connection,
+        "Sec-WebSocket-Key": key,
+        "Sec-WebSocket-Version": version,
+    }
+
+    if protocol is not None:
+        hdrs["Sec-WebSocket-Protocol"] = protocol
+
+    if origin is not None:
+        if int(version) < 8:
+            hdrs["Sec-WebSocket-Origin"] = origin
+        else:
+            hdrs["Origin"] = origin
+
+    if host is not None:
+        hdrs["Host"] = host
+
+    return hdrs
+
+# Supported WebSocket implementation versions, ordered by preference.
+SUPPORTED_VERSIONS = [ '13', '8', '7' ]
+
 #
 # Fixtures
 #
 
-@pytest.yield_fixture(params=['7', '8', '13'])
-def success_response(agent, request):
-    """A fixture that performs a correct handshake with the given version."""
-    response = pytest.blockon(make_request(agent, version=request.param))
-    yield response
-    client.readBody(response).cancel() # immediately close the connection
+@pytest.fixture(scope='module')
+def event_loop():
+    """Redefines the standard pytest-asyncio event loop to have module scope."""
+    loop = asyncio.new_event_loop()
+    yield loop
+    loop.close()
 
-@pytest.yield_fixture(params=['POST', 'PUT', 'DELETE', 'HEAD'])
-def bad_method_response(agent, request):
-    """A fixture that performs a bad handshake with a disallowed HTTP method."""
-    response = pytest.blockon(make_request(agent, method=request.param))
-    yield response
-    client.readBody(response).cancel() # immediately close the connection
+@pytest.fixture(scope='module')
+async def http():
+    """
+    A fixture that returns an aiohttp client session. A single session is cached
+    and reused for all tests in this module.
+    """
+    async with aiohttp.ClientSession() as client:
+        yield client
 
-@pytest.yield_fixture(params=['', 'abcdef', '+13', '13sdfj', '1300', '013',
-                              '-1', '256', '8_'])
-def invalid_version_response(agent, request):
+@pytest.fixture
+def uri():
     """
-    A fixture that performs a bad handshake with a prohibited WebSocket version.
+    Every test in this file uses the same uri.
     """
-    response = pytest.blockon(make_request(agent, version=request.param))
-    yield response
-    client.readBody(response).cancel() # immediately close the connection
-
-@pytest.yield_fixture(params=['0', '9', '14', '255'])
-def unsupported_version_response(agent, request):
-    """
-    A fixture that performs a correct handshake with an unsupported WebSocket
-    version.
-    """
-    response = pytest.blockon(make_request(agent, version=request.param))
-    yield response
-    client.readBody(response).cancel() # immediately close the connection
-
-@pytest.yield_fixture(params=["toosmall", "wayyyyyyyyyyyyyyyyyyyytoobig",
-                              "invalid!characters_89A==",
-                              "badlastcharacterinkey+==",
-                              "WRONGPADDINGLENGTH012A?=",
-                              "JUNKATENDOFPADDING456A=?"])
-def bad_key_response(agent, request):
-    """A fixture that performs a bad handshake with an invalid key."""
-    response = pytest.blockon(make_request(agent, key=request.param))
-    yield response
-    client.readBody(response).cancel() # immediately close the connection
-
-@pytest.yield_fixture(params=["", " ", "\t", ",", ",,", "bad token","\"token\"",
-                              "bad/token", "bad\\token", "valid, invalid{}",
-                              "bad; separator", "control\x05character",
-                              "bad\ttoken"])
-def bad_protocol_response(agent, request):
-    """
-    A fixture that performs a bad handshake with an invalid
-    Sec-WebSocket-Protocol header.
-    """
-    response = pytest.blockon(make_request(agent, protocol=request.param))
-    yield response
-    client.readBody(response).cancel() # immediately close the connection
-
-@pytest.yield_fixture(params=[
-                              [HOST, None],
-                              [HOST_IPV6, None],
-                              [HOST, '7'],
-                              [HOST, '8']
-                             ])
-def good_origin_response(agent, request):
-    """
-    A fixture that performs a handshake with an Origin that matches the server.
-    """
-    host = make_authority(host=request.param[0])
-    origin = make_root(host=request.param[0])
-    version = request.param[1]
-
-    response = pytest.blockon(make_request(agent, origin=origin, host=host,
-                                           version=version))
-    yield response
-    client.readBody(response).cancel() # immediately close the connection
-
-# For use in the mismatched Origin tests.
-OPPOSITE_SCHEME = 'https' if (SCHEME == 'http') else 'http'
-
-@pytest.yield_fixture(params=[
-                              ["http://not-my-origin.com", None, None],
-                              ["http://not-my-origin.com", None, '7'],
-                              ["http://not-my-origin.com", None, '8'],
-                              [make_root(port=55), None, None],
-                              [OPPOSITE_SCHEME + "://" + make_authority(), None, None],
-                              [make_root(), make_authority(port=55), None]
-                             ])
-def bad_origin_response(agent, request):
-    """
-    A fixture that performs a good handshake, but with an Origin that does not
-    match the server.
-    """
-    origin = request.param[0]
-    host = request.param[1]
-    version = request.param[2]
-
-    response = pytest.blockon(make_request(agent, origin=origin, host=host,
-                                           version=version))
-    yield response
-    client.readBody(response).cancel() # immediately close the connection
+    return make_root() + "/echo"
 
 #
 # Tests
 #
 
-def test_valid_handshake_is_upgraded_correctly(success_response):
-    assert_successful_upgrade(success_response)
+@pytest.mark.parametrize("version", SUPPORTED_VERSIONS)
+@pytest.mark.parametrize("connection", [
+    "Upgrade",
+    "Upgrade, close",
+    "close, Upgrade,",
+])
+async def test_valid_handshake_is_upgraded_correctly(http, uri, version, connection):
+    headers = websocket_headers(version=version, connection=connection)
 
-def test_handshake_is_refused_if_method_is_not_GET(bad_method_response):
-    assert 400 <= bad_method_response.code < 500
+    async with http.get(uri, headers=headers) as resp:
+        assert_successful_upgrade(resp)
 
-def test_handshake_is_refused_for_invalid_version(invalid_version_response):
-    assert invalid_version_response.code == 400
+@pytest.mark.parametrize("method", [ 'POST', 'PUT', 'DELETE', 'HEAD' ])
+async def test_handshake_is_refused_if_method_is_not_GET(http, uri, method):
+    headers = websocket_headers()
 
-def test_handshake_is_refused_for_unsupported_versions(unsupported_version_response):
-    assert unsupported_version_response.code == 400
+    async with http.request(method, uri, headers=headers) as resp:
+        assert 400 <= resp.status < 500
 
-    # Make sure the server advertises its supported versions, as well.
-    versions = unsupported_version_response.headers.getRawHeaders("Sec-WebSocket-Version")
-    assert_headers_match(versions, ['13', '8', '7'])
+@pytest.mark.parametrize("bad_version", [
+    '',
+    'abcdef',
+    '+13',
+    '13sdfj',
+    '1300',
+    '013',
+    '-1',
+    '256',
+    '8_',
+])
+async def test_handshake_is_refused_for_invalid_version(http, uri, bad_version):
+    headers = websocket_headers(version=bad_version)
 
-def test_handshake_is_refused_for_bad_key(bad_key_response):
-    assert bad_key_response.code == 400
+    async with http.get(uri, headers=headers) as resp:
+        assert resp.status == 400
 
-def test_handshake_is_refused_for_bad_subprotocols(bad_protocol_response):
-    assert bad_protocol_response.code == 400
+@pytest.mark.parametrize("bad_version", ['0', '9', '14', '255'])
+async def test_handshake_is_refused_for_unsupported_versions(http, uri, bad_version):
+    headers = websocket_headers(version=bad_version)
 
-@pytest.inlineCallbacks
-def test_HTTP_10_handshakes_are_refused(agent_10):
-    response = yield make_request(agent_10)
-    assert 400 <= response.code < 500
+    async with http.get(uri, headers=headers) as resp:
+        assert resp.status == 400
 
-def test_same_Origin_is_allowed(good_origin_response):
-    assert_successful_upgrade(good_origin_response)
+        # Make sure the server advertises its supported versions, as well.
+        versions = resp.headers.getall("Sec-WebSocket-Version")
+        assert_headers_match(versions, SUPPORTED_VERSIONS)
 
-def test_mismatched_Origins_are_refused(bad_origin_response):
-    assert bad_origin_response.code == 403
+@pytest.mark.parametrize("bad_key", [
+    "toosmall",
+    "wayyyyyyyyyyyyyyyyyyyytoobig",
+    "invalid!characters_89A==",
+    "badlastcharacterinkey+==",
+    "WRONGPADDINGLENGTH012A?=",
+    "JUNKATENDOFPADDING456A=?",
+])
+async def test_handshake_is_refused_for_bad_key(http, uri, bad_key):
+    headers = websocket_headers(key=bad_key)
+
+    async with http.get(uri, headers=headers) as resp:
+        assert resp.status == 400
+
+@pytest.mark.parametrize("bad_protocol", [
+    "",
+    " ",
+    "\t",
+    ",",
+    ",,",
+    "bad token",
+    "\"token\"",
+    "bad/token",
+    "bad\\token",
+    "valid, invalid{}",
+    "bad; separator",
+    "control\x05character",
+    "bad\ttoken",
+])
+async def test_handshake_is_refused_for_bad_subprotocols(http, uri, bad_protocol):
+    headers = websocket_headers(protocol=bad_protocol)
+
+    async with http.get(uri, headers=headers) as resp:
+        assert resp.status == 400
+
+async def test_HTTP_10_handshakes_are_refused(uri):
+    headers = websocket_headers()
+
+    async with aiohttp.request('GET', uri, headers=headers,
+                               version=aiohttp.HttpVersion10) as resp:
+        assert 400 <= resp.status < 500
+
+@pytest.mark.parametrize(("host", "version"), [
+    (HOST, '13'),
+    (HOST_IPV6, '13'),
+    (HOST, '8'),
+    (HOST, '7'),
+])
+async def test_same_Origin_is_allowed(http, uri, host, version):
+    authority = make_authority(host=host)
+    origin = make_root(host=host)
+
+    headers = websocket_headers(origin=origin, host=authority, version=version)
+
+    async with http.get(uri, headers=headers) as resp:
+        assert_successful_upgrade(resp)
+
+OPPOSITE_SCHEME = 'https' if (SCHEME == 'http') else 'http'
+
+@pytest.mark.parametrize(("origin", "host", "version"), [
+    ("http://not-my-origin.com", None, None),
+    ("http://not-my-origin.com", None, '7'),
+    ("http://not-my-origin.com", None, '8'),
+    (make_root(port=55), None, None),
+    (OPPOSITE_SCHEME + "://" + make_authority(), None, None),
+    (make_root(), make_authority(port=55), None),
+])
+async def test_mismatched_Origins_are_refused(http, uri, origin, host, version):
+    headers = websocket_headers(origin=origin, host=host, version=version)
+
+    async with http.get(uri, headers=headers) as resp:
+        assert resp.status == 403

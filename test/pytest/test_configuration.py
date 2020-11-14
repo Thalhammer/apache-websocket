@@ -1,52 +1,54 @@
+import asyncio
+
 import pytest
+import websockets
 
-from twisted.web import client
-
-from testutil.fixtures import agent
-from testutil.websocket import assert_successful_upgrade, make_request, \
-                               make_root
-
-#
-# Fixtures
-#
-
-@pytest.yield_fixture(params=['http://origin-one', 'https://origin-two:55',
-                              'https://origin-three'])
-def trusted_origin_response(agent, request):
-    """
-    A fixture that performs a handshake using one of the explicitly trusted test
-    Origins.
-    """
-    response = pytest.blockon(make_request(agent, path='/origin-whitelist',
-                                                  origin=request.param))
-    yield response
-    client.readBody(response).cancel() # immediately close the connection
+from test_fixtures import root_uri, make_root
 
 #
 # Tests
 #
 
-@pytest.inlineCallbacks
-def test_Location_without_plugin_returns_500(agent):
-    response = yield make_request(agent, path='/bad-config')
-    assert response.code == 500
-    client.readBody(response).cancel() # immediately close the connection
+pytestmark = pytest.mark.asyncio
 
-@pytest.inlineCallbacks
-def test_mismatched_Origins_are_allowed_with_OriginCheck_Off(agent):
-    response = yield make_request(agent, path='/no-origin-check',
-                                  origin='http://not-my-origin.com')
-    assert_successful_upgrade(response)
-    client.readBody(response).cancel() # immediately close the connection
+async def test_Location_without_plugin_returns_500(root_uri):
+    uri = root_uri + "/bad-config"
 
-def test_explicitly_trusted_Origins_are_allowed(trusted_origin_response):
-    assert_successful_upgrade(trusted_origin_response)
+    with pytest.raises(websockets.exceptions.InvalidStatusCode) as excinfo:
+        async with websockets.connect(uri):
+            pass
 
-@pytest.inlineCallbacks
-def test_untrusted_Origins_are_not_allowed_with_OriginCheck_Trusted(agent):
+    assert excinfo.value.status_code == 500
+
+async def test_mismatched_Origins_are_allowed_with_OriginCheck_Off(root_uri):
+    uri = root_uri + "/no-origin-check"
+    origin = 'http://not-my-origin.com'
+
+    async with websockets.connect(uri, extra_headers=[('Origin', origin)]):
+        pass # should succeed
+
+# Matches the Trusted list for /origin-trusted in httpd/test.conf.
+TRUSTED_ORIGINS = [
+    'http://origin-one',
+    'https://origin-two:55',
+    'https://origin-three',
+]
+
+@pytest.mark.parametrize("origin", TRUSTED_ORIGINS)
+async def test_explicitly_trusted_Origins_are_allowed(root_uri, origin):
+    uri = root_uri + "/origin-trusted"
+
+    async with websockets.connect(uri, extra_headers=[('Origin', origin)]):
+        pass # should succeed
+
+async def test_untrusted_Origins_are_not_allowed_with_OriginCheck_Trusted(root_uri):
     # When using WebSocketOriginCheck Trusted, even a same-origin request isn't
-    # good enough if the origin is not on the whitelist.
-    response = yield make_request(agent, path='/origin-whitelist',
-                                  origin=make_root())
-    assert response.code == 403
-    client.readBody(response).cancel() # immediately close the connection
+    # good enough if the origin is not on the allowlist.
+    uri = root_uri + "/origin-trusted"
+    origin = make_root()
+
+    with pytest.raises(websockets.exceptions.InvalidStatusCode) as excinfo:
+        async with websockets.connect(uri, extra_headers=[('Origin', origin)]):
+            pass
+
+    assert excinfo.value.status_code == 403

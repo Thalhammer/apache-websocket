@@ -28,12 +28,21 @@ DocumentRoot htdocs
 @conf_22@LogLevel debug
 @conf_24@LogLevel websocket:debug
 
+# Uncomment for request-level debugging.
+#LoadModule log_forensic_module "@system_modules_dir@/mod_log_forensic.so"
+#ForensicLog logs/forensic_log
+
 #
 # Test Configuration
 #
 
 <Location /bad-config>
   SetHandler websocket-handler
+</Location>
+
+<Location /debug/v0>
+  SetHandler websocket-handler
+  WebSocketHandler modules/debug_v0.so debug_init
 </Location>
 
 <Location /dumb-increment>
@@ -58,7 +67,7 @@ DocumentRoot htdocs
   WebSocketOriginCheck Off
 </Location>
 
-<Location /origin-whitelist>
+<Location /origin-trusted>
   SetHandler websocket-handler
   WebSocketHandler modules/mod_websocket_echo.so echo_init
 
@@ -72,4 +81,9 @@ DocumentRoot htdocs
   WebSocketHandler modules/mod_websocket_echo.so echo_init
 
   WebSocketMaxMessageSize 4
+</Location>
+
+<Location /threads>
+  SetHandler websocket-handler
+  WebSocketHandler modules/threads.so threads_init
 </Location>

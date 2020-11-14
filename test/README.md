@@ -6,6 +6,7 @@ This test script makes use of
 ## Prerequisites
 
 * Python 2.7.x (TestSuite doesn't do Python 3 yet)
+* Python 3.6+ (for the remaining tests)
 * [pip](https://pip.pypa.io/)
 * \[Linux\] GNU Autotools (or just run the test server and each test suite
   manually)
@@ -13,14 +14,38 @@ This test script makes use of
 
 ## Setup
 
-The required Python packages are listed in requirements.txt. On Linux, you can
-install them by executing the following from this directory:
+_Autobahn|TestSuite makes this a little more complicated than it needs to be.
+My setup currently involves installing `wstest` on my system's Python 2 stack,
+then activating a Python 3 virtualenv and installing the remaining requirements.
+This should be easier once TestSuite supports Python 3._
 
-    $ [sudo] pip install -r requirements.txt
+### Autobahn|TestSuite
+
+Because TestSuite doesn't support Python 3 yet, you'll need a separate
+Python 2 stack (or virtualenv) with which to install the tool. Install the
+`wstest` executable via
+
+    $ [sudo] pip install autobahntestsuite
+
+or
+
+    $ pip install --user autobahntestsuite
+
+and ensure that the mod_websocket test suite can find it in your `PATH`:
+
+    $ which wstest
+    ~/.local/bin/wstest
+
+### Other Tests
+
+The remaining required Python 3 packages are listed in requirements.txt. On
+Linux, you can install them by executing the following from this directory:
+
+    $ [sudo] pip3 install -r requirements.txt
 
 If you don't want to install globally, you can alternatively run
 
-    $ pip install -r requirements.txt --user
+    $ pip3 install -r requirements.txt --user
     $ export PATH=$PATH:$HOME/.local/bin
 
 or install via `virtualenv` or similar. See your pip/virtualenv documentation

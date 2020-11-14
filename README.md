@@ -252,9 +252,9 @@ but it requires the server to know which origins are trusted.
 The `WebSocketOriginCheck` directive controls how the server applies this
 security feature. The three options are `Same`, which requires the `Origin` sent
 by the user-agent to exactly match the origin of your WebSocket service;
-`Trusted`, which checks the incoming `Origin` against a whitelist that you
-provide; and `Off`, which disables cross-origin protection entirely. The default
-is `Same`.
+`Trusted`, which checks the incoming `Origin` against a list that you provide;
+and `Off`, which disables cross-origin protection entirely. The default is
+`Same`.
 
 _Note that in all cases, handshakes without an `Origin` header are allowed to
 connect._
@@ -291,8 +291,8 @@ Some caveats:
 
 #### Trusted Origins
 
-To specify a whitelist of origins that your plugin will accept connections from,
-use `WebSocketOriginCheck Trusted` and the `WebSocketTrustedOrigin` directive:
+To specify a list of origins that your plugin will accept connections from, use
+`WebSocketOriginCheck Trusted` and the `WebSocketTrustedOrigin` directive:
 
     WebSocketOriginCheck Trusted
     WebSocketTrustedOrigin https://www.example.com https://other.example.com
@@ -300,7 +300,7 @@ use `WebSocketOriginCheck Trusted` and the `WebSocketTrustedOrigin` directive:
 
 If your WebSocket plugin can be accessed via multiple hostname aliases or ports,
 each combination must be added as a separate entry, since the `Origin` value
-sent by a user-agent must _exactly_ match one in the whitelist to be allowed.
+sent by a user-agent must _exactly_ match one in the list to be allowed.
 
 #### Disabling Origin Checks
 

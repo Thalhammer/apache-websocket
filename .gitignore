@@ -12,6 +12,7 @@
 *.os
 *.slo
 *.so
+*.gcno
 
 # Ignore GNU autotools byproducts.
 /autom4te.cache/

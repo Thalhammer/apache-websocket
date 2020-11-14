@@ -75,7 +75,7 @@ typedef struct
     apr_int64_t message_limit;
     int allow_reserved; /* whether to allow reserved status codes */
     int origin_check;   /* how to check the Origin during a handshake */
-    apr_hash_t *trusted_origins; /* whitelist for ORIGIN_CHECK_TRUSTED */
+    apr_hash_t *trusted_origins; /* allowlist for ORIGIN_CHECK_TRUSTED */
 } websocket_config_rec;
 
 /* Possible config values for websocket_config_rec->origin_check */
@@ -282,7 +282,7 @@ static const char *mod_websocket_conf_add_origin(cmd_parms *cmd, void *confv,
                      origin);
 
         ap_log_error(APLOG_MARK, APLOG_DEBUG, APR_SUCCESS, cmd->server,
-                     "added Origin '%s' to the Trusted whitelist for %s",
+                     "added Origin '%s' to the Trusted list for %s",
                      origin, (cmd->path ? cmd->path : "null"));
     }
 
@@ -1004,7 +1004,7 @@ static int is_trusted_origin(request_rec *r, websocket_config_rec *conf,
         return 1;
     } else if (mode == ORIGIN_CHECK_TRUSTED) {
         /*
-         * See if the Origin is in our whitelist.
+         * See if the Origin is in our allowlist.
          */
         void *val = apr_hash_get(conf->trusted_origins, origin,
                                  APR_HASH_KEY_STRING);
@@ -1012,7 +1012,7 @@ static int is_trusted_origin(request_rec *r, websocket_config_rec *conf,
         if (!val) {
             ap_log_rerror(APLOG_MARK, APLOG_INFO, APR_SUCCESS, r,
                           "Origin header '%s' sent by user-agent is not in the "
-                          "Trusted whitelist; rejecting WebSocket upgrade",
+                          "Trusted list; rejecting WebSocket upgrade",
                           origin);
             return 0;
         }

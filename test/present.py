@@ -17,8 +17,6 @@
 # limitations under the License.
 #
 
-from __future__ import print_function
-
 from distutils.version import StrictVersion
 import json
 import os.path
@@ -64,7 +62,7 @@ with open(os.path.join(results_dir, 'index.json'), 'r') as index_file:
     index = json.load(index_file)['AutobahnPython']
 
 # Sort the tests by numeric ID so we print them in a sane order.
-test_ids = index.keys()
+test_ids = list(index.keys())
 test_ids.sort(key=StrictVersion)
 
 # Print the TAP header.
